@@ -21,6 +21,8 @@ class User < ActiveRecord::Base
   has_many :messages, :foreign_key => :receiver_id, :primary_key => :user_id, :dependent => :destroy
   has_many :pay, :foreign_key => :user_id, :primary_key => :user_id, :dependent => :destroy
   before_create { generate_token(:auth_token) }
+  before_save :hash_password
+
 
   def build_benefits_data
     build_retirement(POPULATE_RETIREMENTS.shuffle.first)
@@ -45,15 +47,12 @@ class User < ActiveRecord::Base
   private
 
   def self.authenticate(email, password)
-    auth = nil
     user = find_by_email(email)
-    raise "#{email} doesn't exist!" if !(user)
-    if user.password == Digest::MD5.hexdigest(password)
-      auth = user
+    if user and user.password_hash == BCrypt::Engine.hash_secret(password, user.password_salt)
+      user
     else
-      raise "Incorrect Password!"
+      raise "Invalid Credentials Supplied"
     end
-    return auth
   end
 
   def assign_user_id
@@ -69,10 +68,9 @@ class User < ActiveRecord::Base
   end
 
   def hash_password
-    unless @skip_hash_password == true
-      if password.present?
-        self.password = Digest::MD5.hexdigest(password)
-      end
+    if self.password.present?
+      self.password_salt = BCrypt::Engine.generate_salt
+      self.password_hash = BCrypt::Engine.hash_secret(self.password, self.password_salt)
     end
   end
 
